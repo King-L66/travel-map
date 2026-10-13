@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的中国足迹地图</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/china.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: "PingFang SC","Microsoft YaHei",sans-serif;
+    background: #0f1c2e; color:#eaf2fb; height:100vh; overflow:hidden;
+  }
+  #app { display:flex; height:100vh; }
+  #mapWrap { flex:1; position:relative; }
+  #map { width:100%; height:100%; }
+  /* 返回按钮 + 面包屑 */
+  #navBar {
+    position:absolute; top:14px; left:14px; z-index:10; display:none;
+    align-items:center; gap:10px; background:rgba(22,38,61,.9);
+    padding:8px 14px; border-radius:10px; border:1px solid #2c4a6e;
+  }
+  #navBar.show { display:flex; }
+  #backBtn {
+    background:#4fc3f7; color:#0f1c2e; border:none; padding:6px 14px;
+    border-radius:8px; cursor:pointer; font-weight:600; font-size:13px;
+  }
+  #crumb { font-size:14px; color:#cfe3f7; }
+  #crumb b { color:#ffd54f; }
+  #provAddBtn {
+    background:#2c4a6e; color:#cfe3f7; border:none; padding:6px 12px;
+    border-radius:8px; cursor:pointer; font-size:13px;
+  }
+  #provAddBtn:hover { background:#3a5f8a; }
+  /* ---------- 侧边栏 ---------- */
+  #sidebar {
+    width:330px; background:#16263d; border-left:1px solid #26405f;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  #sidebar h1 {
+    font-size:20px; padding:18px 16px 6px;
+    background:linear-gradient(90deg,#4fc3f7,#a5d6a7);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  #stats { padding:0 16px 12px; font-size:13px; color:#9fb6cf; line-height:1.7; }
+  #stats b { color:#ffd54f; font-size:16px; }
+  #placeList { flex:1; overflow-y:auto; padding:0 12px 12px; }
+  .prov-group { margin-bottom:14px; }
+  .prov-group > .prov-title {
+    font-size:13px; color:#7fd4f7; margin:10px 2px 6px; cursor:pointer;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .prov-group > .prov-title:hover { color:#fff; }
+  .place-card {
+    background:#1d3350; border-radius:10px; padding:10px; margin-bottom:8px;
+    cursor:pointer; transition:.15s; border:1px solid transparent;
+  }
+  .place-card:hover { border-color:#4fc3f7; transform:translateY(-1px); }
+  .place-card .name { font-weight:600; margin-bottom:6px; display:flex; justify-content:space-between; font-size:14px; }
+  .place-card .name span { color:#4fc3f7; font-size:12px; }
+  .thumbs { display:flex; gap:6px; flex-wrap:wrap; }
+  .thumbs img {
+    width:58px; height:58px; object-fit:cover; border-radius:6px; cursor:pointer;
+    border:1px solid #2c4a6e;
+  }
+  .empty-tip { color:#5f7a96; text-align:center; margin-top:40px; font-size:14px; line-height:2; }
+  .toolbar { padding:12px; border-top:1px solid #26405f; display:flex; gap:8px; }
+  .toolbar button {
+    flex:1; padding:8px; border:none; border-radius:8px; cursor:pointer;
+    background:#2c4a6e; color:#cfe3f7; font-size:13px;
+  }
+  .toolbar button:hover { background:#3a5f8a; }
+  #searchBox {
+    margin:0 12px 10px; padding:8px 10px; width:calc(100% - 24px);
+    background:#0f1c2e; border:1px solid #2c4a6e; border-radius:8px; color:#eaf2fb;
+  }
+  /* ---------- 弹窗 ---------- */
+  #modal {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.65);
+    z-index:100; align-items:center; justify-content:center;
+  }
+  #modal.show { display:flex; }
+  #modalBox {
+    width:min(560px,92vw); max-height:86vh; overflow-y:auto;
+    background:#16263d; border-radius:14px; padding:20px;
+    border:1px solid #2c4a6e;
+  }
+  #modalBox h2 { margin-bottom:4px; font-size:20px; }
+  #modalBox .sub { color:#9fb6cf; font-size:13px; margin-bottom:14px; }
+  .upload-zone {
+    border:2px dashed #3a5f8a; border-radius:10px; padding:24px; text-align:center;
+    color:#9fb6cf; cursor:pointer; transition:.15s;
+  }
+  .upload-zone:hover { border-color:#4fc3f7; color:#4fc3f7; }
+  #previewGrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px; }
+  #previewGrid .cell { position:relative; }
+  #previewGrid img { width:100%; height:110px; object-fit:cover; border-radius:8px; }
+  .del-btn {
+    position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
+    background:rgba(0,0,0,.6); color:#ff8a80; border:none; cursor:pointer; font-size:14px; line-height:1;
+  }
+  #noteInput {
+    width:100%; margin-top:14px; padding:10px; border-radius:8px;
+    background:#0f1c2e; border:1px solid #2c4a6e; color:#eaf2fb; resize:vertical;
+    font-family:inherit;
+  }
+  .modal-actions { display:flex; gap:10px; margin-top:16px; }
+  .modal-actions button {
+    flex:1; padding:10px; border:none; border-radius:8px; cursor:pointer; font-size:14px;
+  }
+  #saveBtn { background:#4fc3f7; color:#0f1c2e; font-weight:600; }
+  #saveBtn:disabled { background:#3a5f8a; color:#7a93ad; cursor:not-allowed; }
+  #cancelBtn { background:#2c4a6e; color:#cfe3f7; }
+  #clearBtn { background:transparent; color:#ff8a80; border:1px solid #7a4a4a !important; }
+  /* 大图查看 */
+  #lightbox {
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:200;
+    align-items:center; justify-content:center; flex-direction:column;
+  }
+  #lightbox.show { display:flex; }
+  #lightbox img { max-width:90vw; max-height:80vh; border-radius:8px; }
+  #lightbox p { margin-top:12px; color:#9fb6cf; }
+  #toast {
+    position:fixed; left:50%; bottom:30px; transform:translateX(-50%);
+    background:#2e7d32; color:#fff; padding:10px 22px; border-radius:22px;
+    display:none; z-index:300; font-size:14px;
+  }
+  @media (max-width:768px){
+    #app { flex-direction:column; }
+    #sidebar { width:100%; height:38vh; border-left:none; border-top:1px solid #26405f; }
+    #mapWrap { flex:none; height:62vh; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapWrap">
+    <div id="navBar">
+      <button id="backBtn">← 返回全国</button>
+      <div id="crumb">中国 / <b id="crumbProv"></b></div>
+      <button id="provAddBtn">📷 给全省拍照</button>
+    </div>
+    <div id="map"></div>
+  </div>
+  <div id="sidebar">
+    <h1>🇨🇳 我的中国足迹</h1>
+    <div id="stats"></div>
+    <input id="searchBox" placeholder="🔍 搜索省或城市，回车直达…">
+    <div id="placeList"></div>
+    <div class="toolbar">
+      <button id="exportBtn">📦 导出备份</button>
+      <button id="importBtn">📥 导入备份</button>
+      <input type="file" id="importFile" accept=".json" hidden>
+    </div>
+  </div>
+</div>
+
+<!-- 弹窗 -->
+<div id="modal">
+  <div id="modalBox">
+    <h2 id="modalTitle">📍</h2>
+    <div class="sub">上传你去这里拍的照片，点亮足迹 ✨</div>
+    <div class="upload-zone" id="uploadZone">＋ 点击或拖拽照片到这里（可多选）</div>
+    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    <div id="previewGrid"></div>
+    <textarea id="noteInput" rows="2" placeholder="写点回忆吧…（什么时候去的、和谁、印象最深的瞬间）"></textarea>
+    <div class="modal-actions">
+      <button id="clearBtn">🗑 清空此地</button>
+      <button id="cancelBtn">取消</button>
+      <button id="saveBtn">保存足迹</button>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox"><img id="lbImg"><p id="lbText"></p></div>
+<div id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'chinaTravelMap_v2';
+/* 数据结构: { provinces: { 四川: { photos:[], note:'', cities: { 成都市:{photos:[],note:''} } } } } */
+let data = { provinces: {} };
+try {
+  const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  if (raw && raw.provinces) data = raw;
+  else if (raw && Object.keys(raw).length){ // v1 旧格式迁移
+    for (const [k,v] of Object.entries(raw))
+      data.provinces[k] = { photos:v.photos||[], note:v.note||'', cities:{} };
+  }
+} catch(e) {}
+
+/* 省份中文名 → echarts 地图文件名 */
+const PROV_FILE = {
+  '安徽':'anhui','澳门':'aomen','北京':'beijing','重庆':'chongqing','福建':'fujian',
+  '甘肃':'gansu','广东':'guangdong','广西':'guangxi','贵州':'guizhou','海南':'hainan',
+  '河北':'hebei','黑龙江':'heilongjiang','河南':'henan','湖北':'hubei','湖南':'hunan',
+  '江苏':'jiangsu','江西':'jiangxi','吉林':'jilin','辽宁':'liaoning','内蒙古':'neimenggu',
+  '宁夏':'ningxia','青海':'qinghai','山东':'shandong','上海':'shanghai','山西':'shanxi',
+  '陕西':'shanxi1','四川':'sichuan','台湾':'taiwan','天津':'tianjin','香港':'xianggang',
+  '新疆':'xinjiang','西藏':'xizang','云南':'yunnan','浙江':'zhejiang'
+};
+const PROV_NAMES = Object.keys(PROV_FILE);
+
+let currentView = null;      // null=全国, 否则为省份名
+let currentPlace = null;     // 弹窗目标: {prov, city(null=全省)}
+let pendingPhotos = [];
+
+/* ================= 数据工具 ================= */
+function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); renderAll(); }
+function getProv(p){ return data.provinces[p] || { photos:[], note:'', cities:{} }; }
+function getRec(prov, city){
+  const p = data.provinces[prov];
+  if (!p) return null;
+  return city ? (p.cities[city] || null) : p;
+}
+function provVisited(p){
+  return (p.photos && p.photos.length) || (p.note) ||
+         Object.values(p.cities||{}).some(c => c.photos.length || c.note);
+}
+function cityVisited(c){ return c.photos.length || c.note; }
+function countAll(){
+  let provs = 0, cities = 0;
+  for (const [k,v] of Object.entries(data.provinces)){
+    if (provVisited(v)) provs++;
+    for (const c of Object.values(v.cities||{})) if (cityVisited(c)) cities++;
+  }
+  return {provs, cities};
+}
+
+/* 压缩图片 */
+function compressImage(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 800;
+        let {width:w, height:h} = img;
+        if (w > max || h > max){
+          const r = Math.min(max/w, max/h);
+          w = Math.round(w*r); h = Math.round(h*r);
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadScript(src){
+  return new Promise((res, rej)=>{
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+/* ================= 地图 ================= */
+const chart = echarts.init(document.getElementById('map'));
+
+function mapDataFor(name, prov){
+  /* 生成某地图的 data 数组：有记录的区域点亮 */
+  const arr = [];
+  if (prov){
+    if (prov.photos.length || prov.note)
+      arr.push({ name, value: prov.photos.length + 0.3 });
+    for (const [cn, cv] of Object.entries(prov.cities||{}))
+      if (cityVisited(cv)) arr.push({ name: cn, value: cv.photos.length + (cv.note?0.2:0) });
+  }
+  return arr;
+}
+
+function renderChina(){
+  currentView = null;
+  document.getElementById('navBar').classList.remove('show');
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{
+      trigger:'item',
+      backgroundColor:'#16263d', borderColor:'#2c4a6e', textStyle:{color:'#eaf2fb'},
+      formatter: p => {
+        const pv = data.provinces[p.name];
+        if (pv && provVisited(pv)){
+          const n = Object.values(pv.cities||{}).filter(cityVisited).length;
+          return `<b>${p.name}</b> ⭐已打卡<br>📷 全省照片 ${pv.photos.length} 张${n?`<br>📍 点亮城市 ${n} 个`:''}<br><i style="color:#7d9ab8">点击进入查看城市</i>`;
+        }
+        return `<b>${p.name}</b><br>还没去过，点击进入地图<br>点任意城市上传照片点亮 ✨`;
+      }
+    },
+    visualMap:{ min:0, max:10, show:false, inRange:{ color:['#1d3350','#2e6f8e','#4fc3f7','#ffd54f'] } },
+    series:[{
+      type:'map', map:'china', roam:true, scaleLimit:{min:.8,max:5},
+      zoom:1.15, top:'12%',
+      label:{ show:true, fontSize:10, color:'#7d9ab8' },
+      itemStyle:{ areaColor:'#1d3350', borderColor:'#3a5f8a', borderWidth:.6 },
+      emphasis:{ label:{color:'#fff'}, itemStyle:{ areaColor:'#4fc3f7' } },
+      select:{ disabled:true },
+      data: Object.entries(data.provinces).filter(([k,v])=>provVisited(v))
+        .map(([k,v])=>({ name:k, value:(v.photos.length||0)+Object.keys(v.cities||{}).length*0.5 }))
+    }]
+  }, true);
+}
+
+async function enterProvince(prov){
+  const file = PROV_FILE[prov];
+  if (!file) { openModal(prov, null); return; }
+  toast('正在加载 ' + prov + ' 地图…');
+  try {
+    if (!echarts.getMap(prov))
+      await loadScript(`https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/province/${file}.js`);
+  } catch(e){ toast('地图加载失败，请检查网络后重试'); return; }
+  currentView = prov;
+  document.getElementById('navBar').classList.add('show');
+  document.getElementById('crumbProv').textContent = prov;
+  const pv = data.provinces[prov];
+  chart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{
+      trigger:'item',
+      backgroundColor:'#16263d', borderColor:'#2c4a6e', textStyle:{color:'#eaf2fb'},
+      formatter: p => {
+        const rec = pv && pv.cities ? pv.cities[p.name] : null;
+        if (rec && cityVisited(rec))
+          return `<b>${p.name}</b> ⭐<br>📷 ${rec.photos.length} 张照片${rec.note?'<br>📝 '+escapeHtml(rec.note.slice(0,40)):''}<br><i style="color:#7d9ab8">点击管理照片</i>`;
+        return `<b>${p.name}</b><br>还没去过，点击上传照片 ✨`;
+      }
+    },
+    visualMap:{ min:0, max:10, show:false, inRange:{ color:['#1d3350','#2e6f8e','#4fc3f7','#ffd54f'] } },
+    series:[{
+      type:'map', map:prov, roam:true, scaleLimit:{min:.8,max:8},
+      zoom:1.05, top:'14%',
+      label:{ show:true, fontSize:9, color:'#7d9ab8' },
+      itemStyle:{ areaColor:'#1d3350', borderColor:'#3a5f8a', borderWidth:.5 },
+      emphasis:{ label:{color:'#fff'}, itemStyle:{ areaColor:'#4fc3f7' } },
+      select:{ disabled:true },
+      data: mapDataFor(prov, pv)
+    }]
+  }, true);
+}
+
+chart.on('click', p=>{
+  if (!p.name) return;
+  if (!currentView){
+    if (PROV_FILE[p.name]) enterProvince(p.name);
+  } else {
+    openModal(currentView, p.name);
+  }
+});
+
+document.getElementById('backBtn').onclick = renderChina;
+document.getElementById('provAddBtn').onclick = ()=> openModal(currentView, null);
+
+/* 搜索 */
+document.getElementById('searchBox').addEventListener('keydown', e=>{
+  if (e.key !== 'Enter') return;
+  const kw = e.target.value.trim(); if (!kw) return;
+  const hit = PROV_NAMES.find(n => n.includes(kw));
+  if (hit){
+    enterProvince(hit); e.target.value='';
+    if (data.provinces[hit]) toast('已进入 ' + hit + '，点击城市可添加照片');
+    return;
+  }
+  if (currentView){
+    // 在当前省里搜城市
+    const cities = (getProv(currentView).cities && Object.keys(getProv(currentView).cities)) || [];
+    const opt = chart.getOption();
+    const mapNames = ((opt.series[0] && opt.series[0].data) || []).map(d=>d.name);
+    const chit = cities.find(n=>n.includes(kw)) ;
+    if (chit){ openModal(currentView, chit); e.target.value=''; return; }
+  }
+  toast(`没找到「${kw}」`);
+});
+
+/* ================= 侧边栏 ================= */
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function cardHtml(prov, city, rec){
+  const label = city ? `${city}` : `${prov}（全省）`;
+  return `<div class="place-card" onclick="openModal('${prov}',${city?`'${city}'`:'null'})">
+    <div class="name">${label}<span>📷 ${rec.photos.length}</span></div>
+    <div class="thumbs">${rec.photos.slice(0,5).map((p,i)=>
+      `<img src="${p}" onclick="event.stopPropagation();showLightbox('${prov}',${city?`'${city}'`:'null'},${i})">`).join('')}
+    </div>
+    ${rec.note?`<div style="font-size:12px;color:#9fb6cf;margin-top:6px;">📝 ${escapeHtml(rec.note.slice(0,50))}</div>`:''}
+  </div>`;
+}
+
+function renderSidebar(){
+  const list = document.getElementById('placeList');
+  const {provs, cities} = countAll();
+  document.getElementById('stats').innerHTML =
+    `已点亮 <b>${provs}</b> / 34 个省级地区 · <b>${cities}</b> 个城市/区`;
+  const entries = Object.entries(data.provinces).filter(([k,v])=>provVisited(v));
+  if (!entries.length){
+    list.innerHTML = `<div class="empty-tip">✈️ 地图还是空白的<br>点击任意省份进入<br>再点城市上传第一张照片吧！</div>`;
+    return;
+  }
+  list.innerHTML = entries.map(([prov, pv])=>{
+    let inner = '';
+    if (pv.photos.length || pv.note) inner += cardHtml(prov, null, pv);
+    for (const [cn, cv] of Object.entries(pv.cities||{}))
+      if (cityVisited(cv)) inner += cardHtml(prov, cn, cv);
+    return `<div class="prov-group">
+      <div class="prov-title" onclick="enterProvince('${prov}')">📌 ${prov}<span style="color:#5f7a96">进入地图 ›</span></div>
+      ${inner}</div>`;
+  }).join('');
+}
+function renderAll(){
+  renderSidebar();
+  if (currentView) enterProvince(currentView); else renderChina();
+}
+
+/* ================= 弹窗 ================= */
+function openModal(prov, city){
+  currentPlace = { prov, city };
+  const rec = getRec(prov, city) || { photos:[], note:'' };
+  document.getElementById('modalTitle').textContent =
+    '📍 ' + prov + (city ? ' · ' + city.replace(/(市|区|县|州|盟|地区)$/,'') : '（全省）');
+  document.getElementById('noteInput').value = rec.note || '';
+  pendingPhotos = [...rec.photos];
+  renderPreview();
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal').classList.remove('show'); currentPlace = null; }
+
+function renderPreview(){
+  const g = document.getElementById('previewGrid');
+  g.innerHTML = pendingPhotos.map((p,i)=>`
+    <div class="cell"><img src="${p}"><button class="del-btn" onclick="pendingPhotos.splice(${i},1);renderPreview()">×</button></div>`).join('');
+  const hasNote = document.getElementById('noteInput').value.trim().length > 0;
+  document.getElementById('saveBtn').disabled = pendingPhotos.length===0 && !hasNote;
+}
+async function addFiles(files){
+  for (const f of files){
+    if (!f.type.startsWith('image/')) continue;
+    pendingPhotos.push(await compressImage(f));
+  }
+  renderPreview();
+}
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+uploadZone.onclick = ()=>fileInput.click();
+fileInput.onchange = e=>{ addFiles(e.target.files); fileInput.value=''; };
+uploadZone.ondragover = e=>{ e.preventDefault(); uploadZone.style.borderColor='#4fc3f7'; };
+uploadZone.ondragleave = ()=>uploadZone.style.borderColor='#3a5f8a';
+uploadZone.ondrop = e=>{ e.preventDefault(); uploadZone.style.borderColor='#3a5f8a'; addFiles(e.dataTransfer.files); };
+document.getElementById('noteInput').addEventListener('input', renderPreview);
+
+document.getElementById('saveBtn').onclick = ()=>{
+  if (!currentPlace) return;
+  const { prov, city } = currentPlace;
+  const note = document.getElementById('noteInput').value.trim();
+  if (pendingPhotos.length===0 && !note){
+    toast('照片和备注都是空的～');
+    return;
+  }
+  if (!data.provinces[prov]) data.provinces[prov] = { photos:[], note:'', cities:{} };
+  const target = city ? data.provinces[prov].cities : data.provinces[prov];
+  const key = city || '';
+  if (city){
+    target[key] = { photos:[...pendingPhotos], note };
+  } else {
+    data.provinces[prov].photos = [...pendingPhotos];
+    data.provinces[prov].note = note;
+  }
+  save(); closeModal();
+  toast(`已保存 ${prov}${city?' · '+city:''} 的足迹 🎉`);
+};
+document.getElementById('cancelBtn').onclick = closeModal;
+document.getElementById('clearBtn').onclick = ()=>{
+  if (!currentPlace) return;
+  const { prov, city } = currentPlace;
+  if (!confirm(`确定清空「${prov}${city?' · '+city:''}」的所有照片和记录吗？`)) return;
+  if (city){
+    if (data.provinces[prov]) delete data.provinces[prov].cities[city];
+  } else if (data.provinces[prov]){
+    data.provinces[prov].photos = []; data.provinces[prov].note = '';
+  }
+  save(); closeModal(); toast('已清空');
+};
+document.getElementById('modal').onclick = e=>{ if (e.target.id==='modal') closeModal(); };
+
+/* ================= 大图 & 备份 ================= */
+function showLightbox(prov, city, idx){
+  const rec = getRec(prov, city === 'null' ? null : city);
+  if (!rec) return;
+  document.getElementById('lbImg').src = rec.photos[idx];
+  document.getElementById('lbText').textContent =
+    `${prov}${city && city!=='null' ? ' · '+city : ''} · 第 ${idx+1}/${rec.photos.length} 张`;
+  document.getElementById('lightbox').classList.add('show');
+}
+document.getElementById('lightbox').onclick = ()=>document.getElementById('lightbox').classList.remove('show');
+document.addEventListener('keydown', e=>{
+  if (e.key==='Escape'){ closeModal(); document.getElementById('lightbox').classList.remove('show'); }
+});
+
+document.getElementById('exportBtn').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '我的中国足迹备份.json';
+  a.click();
+};
+document.getElementById('importBtn').onclick = ()=>document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = e=>{
+  const f = e.target.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = ev=>{
+    try{
+      const imported = JSON.parse(ev.target.result);
+      if (imported && imported.provinces){ data = imported; save(); toast('导入成功 🎉'); }
+      else toast('文件格式不对');
+    } catch(err){ toast('导入失败：不是有效的 JSON 文件'); }
+  };
+  r.readAsText(f); e.target.value='';
+};
+
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display='block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.style.display='none', 2400);
+}
+
+window.addEventListener('resize', ()=>chart.resize());
+renderChina();
+renderSidebar();
+</script>
+</body>
+</html>
